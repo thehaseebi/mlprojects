@@ -1,106 +1,89 @@
 import sys
 import os
-from dataclasses import dataclass
 import pandas as pd
 import numpy as np
 from sklearn.compose import ColumnTransformer
-from src.logger import logging
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.pipeline import Pipeline
+
+from src.logger import logging
 from src.exception import CustomException
 from src.utils import save_object
 
-@dataclass
-class DataTransformationConfig:
-    preprocessor_obj_file_path = os.path.join('artifacts', 'preprocessor.pkl')
+PREPROCESSOR_PATH = os.path.join("artifacts", "preprocessor.pkl")
+TARGET_COL = "math_score"
 
-class DataTransformation:
-    def __init__(self):
-        self.data_transformation_config = DataTransformationConfig()
+NUM_COLS = ["writing_score", "reading_score"]
+CAT_COLS = [
+    "gender",
+    "race_ethnicity",
+    "parental_level_of_education",
+    "lunch",
+    "test_preparation_course",
+]
 
-    def get_data_transformer_object(self):
-        '''
-        Docstring for get_data_transformer_object
-    
-        '''
-        try:
-            numerical_columns = ['writing_score', 'reading_score']
-            categorical_columns = [
-                'gender',
-                'race_ethnicity',
-                'parental_level_of_education',
-                'lunch',
-                'test_preparation_course'
+
+def get_preprocessor():
+    try:
+        num_pipeline = Pipeline(
+            steps=[
+                ("imputer", SimpleImputer(strategy="median")),
+                ("scaler", StandardScaler()),
             ]
+        )
 
-            num_pipeline = Pipeline(
-                steps=[
-                    ("imputer", SimpleImputer(strategy="median")),
-                    ("scaler", StandardScaler())
-                ]
-            )
+        cat_pipeline = Pipeline(
+            steps=[
+                ("imputer", SimpleImputer(strategy="most_frequent")),
+                ("one_hot_encoder", OneHotEncoder()),
+                ("scaler", StandardScaler(with_mean=False)),
+            ]
+        )
 
-            cat_pipeline = Pipeline(
-                steps=[
-                    ("imputer", SimpleImputer(strategy="most_frequent")),
-                    ("one_hot_encoder", OneHotEncoder()),
-                    ("scaler", StandardScaler(with_mean=False))
-                ]
-            )
+        logging.info("Numerical columns standard scaling completed")
+        logging.info("Categorical columns encoding completed")
 
-            logging.info("Numerical columns standard scaling completed")
-            logging.info("Categorical columns encoding completed")
+        preprocessor = ColumnTransformer(
+            transformers=[
+                ("num_pipeline", num_pipeline, NUM_COLS),
+                ("cat_pipeline", cat_pipeline, CAT_COLS),
+            ]
+        )
 
-            preprocessor = ColumnTransformer(
-                transformers=[
-                    ("num_pipeline", num_pipeline, numerical_columns),
-                    ("cat_pipeline", cat_pipeline, categorical_columns)
-                ]
-            )
+        return preprocessor
 
-            return preprocessor
+    except Exception as e:
+        raise CustomException(e, sys)
 
-        except Exception as e:
-            raise CustomException(e, sys)
-        
 
-    def initiate_data_transformation(self, train_path, test_path):
-        try:
-            logging.info("Reading training and testing data")
-            train_df = pd.read_csv(train_path)
-            test_df = pd.read_csv(test_path)
+def initiate_data_transformation(train_path, test_path, preprocessor_path=PREPROCESSOR_PATH):
+    try:
+        logging.info("Reading training and testing data")
+        train_df = pd.read_csv(train_path)
+        test_df = pd.read_csv(test_path)
 
-            logging.info("Obtaining preprocessing object")
-            preprocessing_obj = self.get_data_transformer_object()
+        logging.info("Obtaining preprocessing object")
+        preprocessor = get_preprocessor()
 
-            target_column_name = "math_score"
-            numerical_columns = ['writing_score', 'reading_score']
+        X_train = train_df.drop(columns=[TARGET_COL], axis=1)
+        y_train = train_df[TARGET_COL]
 
-            input_feature_train_df = train_df.drop(columns=[target_column_name], axis=1)
-            target_feature_train_df = train_df[target_column_name]
+        X_test = test_df.drop(columns=[TARGET_COL], axis=1)
+        y_test = test_df[TARGET_COL]
 
-            input_feature_test_df = test_df.drop(columns=[target_column_name], axis=1)
-            target_feature_test_df = test_df[target_column_name]
+        logging.info("Applying preprocessing object on training and testing data")
+        X_train_arr = preprocessor.fit_transform(X_train)
+        X_test_arr = preprocessor.transform(X_test)
 
-            logging.info("Applying preprocessing object on training and testing data")
-            input_feature_train_arr = preprocessing_obj.fit_transform(input_feature_train_df)
-            input_feature_test_arr = preprocessing_obj.transform(input_feature_test_df)
+        train_arr = np.c_[X_train_arr, np.array(y_train)]
+        test_arr = np.c_[X_test_arr, np.array(y_test)]
 
-            train_arr = np.c_[input_feature_train_arr, np.array(target_feature_train_df)]
-            test_arr = np.c_[input_feature_test_arr, np.array(target_feature_test_df)]
+        logging.info("Data transformation completed")
 
-            logging.info("Data transformation completed")
+        save_object(file_path=preprocessor_path, obj=preprocessor)
 
-            save_object(
-                file_path=self.data_transformation_config.preprocessor_obj_file_path,
-                obj=preprocessing_obj
-            )
-            return (
-                train_arr,
-                test_arr,
-                self.data_transformation_config.preprocessor_obj_file_path
-            )
+        return train_arr, test_arr, preprocessor_path
 
-        except Exception as e:
-            raise CustomException(e, sys)
+    except Exception as e:
+        raise CustomException(e, sys)
