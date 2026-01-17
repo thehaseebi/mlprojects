@@ -4,7 +4,8 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from src.exception import CustomException
 from src.logger import logging
-
+from src.components.data_transformation import DataTransformation
+from src.components.data_transformation import DataTransformationConfig
 TRAIN_PATH = os.path.join('artifacts', 'train.csv')
 TEST_PATH = os.path.join('artifacts', 'test.csv')
 RAW_PATH = os.path.join('artifacts', 'data.csv')
@@ -37,4 +38,9 @@ def initiate_data_ingestion():
 
 
 if __name__ == "__main__":
-    initiate_data_ingestion()
+    train_data, test_data = initiate_data_ingestion()
+
+    data_transformation=DataTransformation()
+    data_transformation.initiate_data_transformation(train_data, test_data)
+
+
